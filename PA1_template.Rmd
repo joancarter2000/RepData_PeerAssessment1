@@ -1,5 +1,6 @@
 ---
 title: "Reproducible Research: Peer Assessment 1"
+date: "May 16 2015"
 output: 
   html_document:
     keep_md: true
@@ -7,19 +8,127 @@ output:
 
 
 ## Loading and preprocessing the data
+```{r echo=TRUE}
+##unzip the zipfile to get the original data
+unzip("activity.zip", exdir=".")
 
+##load the data
+activity<-read.csv(file="activity.csv", header=TRUE)
 
+##view data
+head(activity)
+str(activity)
+
+```
 
 ## What is mean total number of steps taken per day?
+```{r echo=TRUE}
+##1. calculate total number of steps taken per day
+sum<-tapply(activity$steps, activity$date, sum, simplify=TRUE)
+sum<-data.frame(sum) ##convert sum from list to dataframe
+head(sum) ##view sum
 
+```
 
+```{r echo=TRUE, fig.height=4, fig.width=4}
+##2. make histogram of total number of steps taken per day
+hist(sum$sum, xlab="Total steps per day")
+
+##3. calculate the mean and median of the total number of steps taken per day
+summary(sum$sum)
+
+```
 
 ## What is the average daily activity pattern?
+```{r echo=TRUE, fig.height=4, fig.width=4}
+##1. calculate average number steps across all days
+ave<-tapply(activity$steps, activity$interval, mean, na.rm=TRUE,simplify=TRUE)
+ave<-data.frame(ave) ##convert ave from list to dataframe for easy manupulation
+colSums(is.na(ave)) ##check if any missing values in average steps per 5 min interval
+ave$interval<-as.numeric(row.names(ave))
+head(ave)
 
+##draw the time series plot of the 5 min interval (x axis) vs average steps across all days (y axis)
 
+plot(ave$ave~ave$interval, type="l", xlab="Interval", ylab="Average steps taken all days")
+
+##5-min interval contains the maximum number of steps
+answer<-ave$interval[ave$ave==max(ave$ave)]
+
+```
+From this plot, we can figure out that the 5-min interval contains the maximum number of steps is `r answer`
 
 ## Imputing missing values
+Since missing value may introduce bias into some calculations of the data, it is better to check these values in the dataset:
 
+```{r echo=TRUE}
+##1. count total # of missing values in activity
+colSums(is.na(activity))
 
+```
+
+There are many ways to fill in these missing values. If go back to the summary statistic calculated for total number of steps taken per day, we can see there are 8 NAs in the data i.e there are 8 days with no record at all. Therefore it is not a good strategy to use mean/median steps for that day to fill in the missing values. Since the data (ave) for average steps for 5-min interval across all days does not have any NA value, I decided to use the mean for that 5-min interval for filling in NA instead.
+
+```{r echo=TRUE, fig.height=4, fig.width=10}
+##3. Create a new dataset with missing data filled in
+##copy old activity dataset to new dataset
+newactivity<-data.frame(activity)
+
+##create a column of ave in new activity dataset for filling in missing value
+unit<-data.frame(ave)
+
+for(i in (1:60)){
+    ave<-rbind(unit, ave)
+}
+
+newactivity$ave<-ave$ave
+
+##get the index for each NA
+index<-which(is.na(newactivity$steps))
+
+##assign appropriate average of 5 min interval to NA and create a new activity dataset
+newactivity$steps[index]<-newactivity$ave[index]
+newdata<-newactivity[,1:3] ##remove extra column to make the new data as the old set
+head(newdata)
+
+##4. make histogram of the total number of steps taken each day and calculate the mean and median 
+##calculate total number of steps taken per day
+newsum<-tapply(newdata$steps, newdata$date, sum, simplify=TRUE)
+newsum<-data.frame(newsum)
+
+par(mfrow=c(1,2))
+hist(newsum$newsum, xlab="Total steps per day", ylim=c(0,35)) ##histogram of the new dataset
+hist(sum$sum, xlab="Total steps per day", ylim=c(0,35)) ##histogram of the old dataset
+
+summary(newsum$newsum) ##summary statistic for mean and median of the new set
+summary(sum$sum) ##summarty statistics for old set
+
+```
+
+Clearly the histogram of the new dataset is similar to the old dataset except the total steps per day in the range of 10000 to 15000. The new data has higher frequency in this range. The mean and median are identical when missing values are filled in suggesting that filling in missing value makes the distribution look more like a normal distribution.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+```{r echo=TRUE}
+##1. create a new factor variable in the new dataset with 2 levels: weekday and weekend
+##convert the date variable to Date class
+library(lubridate)
+newdata$day<-as.Date(newdata$date)
+newdata$day<-weekdays(newdata$day)
+
+##merge all levels of the day variable into two levels: weekday and weekend
+newdata$day<-as.factor(newdata$day)
+levels(newdata$day) = list(weekday = c("Monday","Tuesday", "Wednesday", "Thursday", "Friday"), weekend = c("Saturday", "Sunday"))
+table(newdata$day)
+
+##2. make a panel plot of 5 min interval (x-axis) vs average steps across all weekday or weekend days(y-axis)
+
+##calculate average steps taken across all weekdays and weekends
+library(dplyr)
+data<-group_by(newdata, day, interval)
+table<-summarize(data, steps=mean(steps, na.rm=TRUE))
+
+##use lattice system to plot
+library(lattice)
+xyplot(steps~interval|day, data=table, type="l", layout=c(1,2), xlab="Interval", ylab="Number of steps")
+
+```
